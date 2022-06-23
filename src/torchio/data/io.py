@@ -14,6 +14,10 @@ from ..typing import (
     TypeDataAffine,
     TypeDirection,
     TypeTripletFloat,
+    TypeDoubletInt,
+    TypeQuartetInt,
+    TypeDirection2D,
+    TypeDirection3D,
 )
 
 
@@ -87,18 +91,23 @@ def _read_dicom(directory: TypePath):
     return image
 
 
-def read_shape(path: TypePath) -> Tuple[int, int, int, int]:
+def read_shape(path: TypePath) -> TypeQuartetInt:
     reader = sitk.ImageFileReader()
     reader.SetFileName(str(path))
     reader.ReadImageInformation()
     num_channels = reader.GetNumberOfComponents()
-    spatial_shape = reader.GetSize()
     num_dimensions = reader.GetDimension()
     if num_dimensions == 2:
-        spatial_shape = *spatial_shape, 1
-    elif num_dimensions == 4:  # assume bad NIfTI
-        *spatial_shape, num_channels = spatial_shape
-    shape = (num_channels,) + tuple(spatial_shape)
+        spatial_shape_2d: TypeDoubletInt = reader.GetSize()
+        assert len(spatial_shape_2d) == 2
+        si, sj = spatial_shape_2d
+        shape = num_channels, si, sj, 1
+    elif num_dimensions == 4:
+        # We assume bad NIfTI file (channels encoded as spatial dimension)
+        spatial_shape_4d: TypeQuartetInt = reader.GetSize()
+        assert len(spatial_shape_4d) == 4
+        si, sj, sk, num_channels = spatial_shape_4d
+        shape = num_channels, si, sj, sk
     return shape
 
 
@@ -130,7 +139,7 @@ def write_image(
 
 
 def _write_nibabel(
-        tensor: TypeData,
+        tensor: torch.Tensor,
         affine: TypeData,
         path: TypePath,
 ) -> None:
@@ -388,6 +397,7 @@ def get_sitk_metadata_from_ras_affine(
     # (there must be prettier ways to do this)
     ox, oy, oz = origin_array
     sx, sy, sz = spacing_array
+    direction: Union[TypeDirection2D, TypeDirection3D]
     if is_2d:
         d1, d2, d3, d4 = direction_array
         direction = d1, d2, d3, d4
